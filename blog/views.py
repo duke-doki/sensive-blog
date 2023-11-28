@@ -4,11 +4,21 @@ from blog.models import Comment, Post, Tag
 
 
 def get_related_posts_count(tag):
-    return tag.num_posts
+    return tag.posts.count()
 
 
-def get_likes_count(post):
-    return post.num_likes
+def comments_count_optimizer(posts):
+    posts_ids = [post.id for post in posts]
+    posts_with_comments = Post.objects.filter(
+        id__in=posts_ids).annotate(
+        num_comments=Count('comments')
+    )
+    ids_and_comments = posts_with_comments.values_list('id', 'num_comments')
+    count_for_id = dict(ids_and_comments)
+    for post in posts:
+        post.num_comments = count_for_id[post.id]
+
+    return posts
 
 
 def serialize_post(post):
@@ -17,6 +27,20 @@ def serialize_post(post):
         'teaser_text': post.text[:200],
         'author': post.author.username,
         'comments_amount': len(Comment.objects.filter(post=post)),
+        'image_url': post.image.url if post.image else None,
+        'published_at': post.published_at,
+        'slug': post.slug,
+        'tags': [serialize_tag(tag) for tag in post.tags.all()],
+        'first_tag_title': post.tags.all()[0].title,
+    }
+
+
+def serialize_post_optimized(post):
+    return {
+        'title': post.title,
+        'teaser_text': post.text[:200],
+        'author': post.author.username,
+        'comments_amount': post.num_comments,
         'image_url': post.image.url if post.image else None,
         'published_at': post.published_at,
         'slug': post.slug,
@@ -36,14 +60,14 @@ def index(request):
     posts = Post.objects.prefetch_related('author').annotate(
         num_likes=Count('likes')
     )
+    most_popular_posts = list(posts.order_by('-num_likes'))[:5]
+    most_popular_posts = comments_count_optimizer(most_popular_posts)
 
-    popular_posts = posts.order_by('-num_likes')
-    most_popular_posts = list(popular_posts)[:5]
 
-    fresh_posts = Post.objects.prefetch_related('author').order_by(
-        'published_at'
-    )
+    fresh_posts = posts.order_by('published_at')
     most_fresh_posts = list(fresh_posts)[-5:]
+    most_fresh_posts = comments_count_optimizer(most_fresh_posts)
+
 
     tags = Tag.objects.annotate(num_posts=Count('posts'))
     popular_tags = tags.order_by('-num_posts')
@@ -51,9 +75,11 @@ def index(request):
 
     context = {
         'most_popular_posts': [
-            serialize_post(post) for post in most_popular_posts
+            serialize_post_optimized(post) for post in most_popular_posts
         ],
-        'page_posts': [serialize_post(post) for post in most_fresh_posts],
+        'page_posts': [
+            serialize_post_optimized(post) for post in most_fresh_posts
+        ],
         'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
     }
     return render(request, 'index.html', context)
