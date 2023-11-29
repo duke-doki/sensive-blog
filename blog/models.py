@@ -18,6 +18,10 @@ class PostQuerySet(models.QuerySet):
         ).order_by('-num_likes')
         return popular_posts
 
+    def fresh(self):
+        fresh_posts = self.order_by('-published_at')
+        return fresh_posts
+
     def fetch_with_comments_count(self):
         posts_ids = [post.id for post in self]
         posts_with_comments = Post.objects.filter(
