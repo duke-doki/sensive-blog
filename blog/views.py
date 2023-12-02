@@ -47,13 +47,8 @@ def index(request):
 
 
 def post_detail(request, slug):
-    posts = Post.objects.annotate(num_likes=Count('likes')).prefetch_related(
-        'author',
-        Prefetch(
-            'tags',
-            queryset=Tag.objects.annotate(num_posts=Count('posts'))
-        ),
-    )
+    posts = Post.objects.annotate(num_likes=Count('likes')). \
+        prefetch_author_and_tags()
     post = get_object_or_404(posts, slug=slug)
     comments = post.comments.select_related('author')
     serialized_comments = []
@@ -98,13 +93,7 @@ def tag_filter(request, tag_title):
 
     most_popular_tags = Tag.objects.popular()[:5]
 
-    posts = Post.objects.prefetch_related(
-        'author',
-        Prefetch(
-            'tags',
-            queryset=Tag.objects.annotate(num_posts=Count('posts'))
-        )
-    )
+    posts = Post.objects.prefetch_author_and_tags()
     most_popular_posts = posts.popular()[:5] \
         .fetch_with_comments_count()
 
